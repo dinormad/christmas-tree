@@ -22,9 +22,9 @@ import type { User } from '@supabase/supabase-js';
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
 
-// Use local photos for now - switch to Supabase after uploading photos
-// To use Supabase photos after upload, uncomment the Supabase import and use getPhotoUrl()
-const USE_SUPABASE = true; // Now always true with authentication
+// Always use local photos as default/fallback
+// Users will see placeholder photos until they upload their own
+const USE_SUPABASE = false; // Set to true only when checking if user has uploaded photos
 
 // Function to get photo paths
 const getPhotoPath = (fileName: string, userId?: string): string => {
@@ -32,7 +32,7 @@ const getPhotoPath = (fileName: string, userId?: string): string => {
     // Supabase storage URL with user folder
     return getPhotoUrl(fileName, userId);
   }
-  // Local photos fallback
+  // Local photos fallback (default placeholder photos)
   return `/photos/${fileName}`;
 };
 
@@ -42,7 +42,7 @@ const generatePhotoPaths = (userId?: string) => [
   ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => getPhotoPath(`${i + 1}.jpg`, userId))
 ];
 
-const bodyPhotoPaths = generatePhotoPaths(); // Initial without user ID
+const bodyPhotoPaths = generatePhotoPaths(); // Initial without user ID (uses local photos)
 
 // --- 视觉配置 ---
 const CONFIG = {
