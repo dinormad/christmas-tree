@@ -171,7 +171,7 @@ const PhotoUploader = ({ onComplete }: PhotoUploaderProps) => {
       instructions += `1. 顶端封面图：将其重命名为 "top.jpg"\n`;
     }
     
-    bodyPhotos.forEach((photo: UploadedPhoto, i: number) => {
+    bodyPhotos.forEach((_photo: UploadedPhoto, i: number) => {
       instructions += `${i + 2}. 树身照片 ${i + 1}：将其重命名为 "${i + 1}.jpg"\n`;
     });
 
