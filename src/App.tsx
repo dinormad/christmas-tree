@@ -15,13 +15,29 @@ import * as THREE from 'three';
 import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
-
+import PhotoUploader from './PhotoUploader';
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
+
+// Use local photos for now - switch to Supabase after uploading photos
+// To use Supabase photos after upload, uncomment the Supabase import and use getPhotoUrl()
+const USE_SUPABASE = false; // Set to true after uploading photos to Supabase
+
+// Function to get photo paths
+const getPhotoPath = (fileName: string): string => {
+  if (USE_SUPABASE && import.meta.env.VITE_SUPABASE_URL) {
+    // Supabase storage URL
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    return `${supabaseUrl}/storage/v1/object/public/christmas-tree-photos/${fileName}`;
+  }
+  // Local photos fallback
+  return `/photos/${fileName}`;
+};
+
 // 修改：将 top.jpg 加入到数组开头
 const bodyPhotoPaths = [
-  '/photos/top.jpg',
-  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => `/photos/${i + 1}.jpg`)
+  getPhotoPath('top.jpg'),
+  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => getPhotoPath(`${i + 1}.jpg`))
 ];
 
 // --- 视觉配置 ---
@@ -509,6 +525,7 @@ export default function GrandTreeApp() {
   const [rotationSpeed, setRotationSpeed] = useState(0);
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
@@ -540,6 +557,9 @@ export default function GrandTreeApp() {
         <button onClick={() => setDebugMode(!debugMode)} style={{ padding: '12px 15px', backgroundColor: debugMode ? '#FFD700' : 'rgba(0,0,0,0.5)', border: '1px solid #FFD700', color: debugMode ? '#000' : '#FFD700', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
            {debugMode ? 'HIDE DEBUG' : '🛠 DEBUG'}
         </button>
+        <button onClick={() => setShowUploader(true)} style={{ padding: '12px 20px', backgroundColor: 'rgba(46, 125, 50, 0.8)', border: '1px solid #2E7D32', color: '#fff', fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+           📸 管理照片
+        </button>
         <button onClick={() => setSceneState(s => s === 'CHAOS' ? 'FORMED' : 'CHAOS')} style={{ padding: '12px 30px', backgroundColor: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255, 215, 0, 0.5)', color: '#FFD700', fontFamily: 'serif', fontSize: '14px', fontWeight: 'bold', letterSpacing: '3px', textTransform: 'uppercase', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
            {sceneState === 'CHAOS' ? 'Assemble Tree' : 'Disperse'}
         </button>
@@ -549,6 +569,11 @@ export default function GrandTreeApp() {
       <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', color: aiStatus.includes('ERROR') ? '#FF0000' : 'rgba(255, 215, 0, 0.4)', fontSize: '10px', letterSpacing: '2px', zIndex: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
         {aiStatus}
       </div>
+
+      {/* Photo Uploader Modal */}
+      {showUploader && (
+        <PhotoUploader onComplete={() => setShowUploader(false)} />
+      )}
     </div>
   );
 }
