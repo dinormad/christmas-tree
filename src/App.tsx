@@ -535,6 +535,7 @@ export default function GrandTreeApp() {
   const [showUploader, setShowUploader] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [userPhotoPaths, setUserPhotoPaths] = useState(bodyPhotoPaths);
+  const [loading, setLoading] = useState(true);
 
   // Check user authentication on mount
   useEffect(() => {
@@ -544,6 +545,7 @@ export default function GrandTreeApp() {
         // Update photo paths with user ID
         setUserPhotoPaths(generatePhotoPaths(session.user.id));
       }
+      setLoading(false);
     });
 
     const {
@@ -561,6 +563,18 @@ export default function GrandTreeApp() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Show loading screen while checking auth
+  if (loading) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', backgroundColor: '#1a4d2e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFD700', fontSize: '20px', fontFamily: 'sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>🎄</div>
+          <div>Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   // If not authenticated, show Auth screen
   if (!user) {
