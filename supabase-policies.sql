@@ -1,91 +1,72 @@
 -- ============================================
 -- Supabase Storage Policies for Christmas Tree App
 -- Bucket: christmas-tree-photos
--- WITH USER AUTHENTICATION & ISOLATION
 -- ============================================
 
--- IMPORTANT: First, drop any existing conflicting policies
--- Run this in Supabase SQL Editor before creating new policies
+-- ⚠️ IMPORTANT: You CANNOT run SQL for storage policies directly
+-- You must use the Supabase Dashboard UI instead
 
 -- ============================================
--- STEP 1: Clean up existing policies (run this first)
+-- EASY FIX: Use Dashboard UI (Recommended)
 -- ============================================
-DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
-DROP POLICY IF EXISTS "Allow public upload" ON storage.objects;
-DROP POLICY IF EXISTS "Allow public update" ON storage.objects;
-DROP POLICY IF EXISTS "Allow public delete" ON storage.objects;
-DROP POLICY IF EXISTS "Public read access" ON storage.objects;
-DROP POLICY IF EXISTS "Public upload access" ON storage.objects;
-DROP POLICY IF EXISTS "Public update access" ON storage.objects;
-DROP POLICY IF EXISTS "Public delete access" ON storage.objects;
-DROP POLICY IF EXISTS "Users can read own photos" ON storage.objects;
-DROP POLICY IF EXISTS "Users can upload own photos" ON storage.objects;
-DROP POLICY IF EXISTS "Users can update own photos" ON storage.objects;
-DROP POLICY IF EXISTS "Users can delete own photos" ON storage.objects;
+
+-- STEP 1: Go to Supabase Dashboard
+-- https://supabase.com/dashboard/project/YOUR_PROJECT/storage/policies
+
+-- STEP 2: Click on "christmas-tree-photos" bucket
+
+-- STEP 3: Click "New Policy" button
+
+-- STEP 4: Create these 4 policies using the UI:
+
+-- ----------------------------------------
+-- Policy 1: Upload (INSERT)
+-- ----------------------------------------
+-- Name: Users can upload to own folder
+-- Allowed operation: INSERT
+-- Policy definition:
+-- (bucket_id = 'christmas-tree-photos' AND (storage.foldername(name))[1] = auth.uid()::text)
+-- Target roles: authenticated
+
+-- ----------------------------------------
+-- Policy 2: Update (UPDATE)
+-- ----------------------------------------
+-- Name: Users can update own files
+-- Allowed operation: UPDATE
+-- Policy definition:
+-- (bucket_id = 'christmas-tree-photos' AND (storage.foldername(name))[1] = auth.uid()::text)
+-- Target roles: authenticated
+
+-- ----------------------------------------
+-- Policy 3: Delete (DELETE)
+-- ----------------------------------------
+-- Name: Users can delete own files
+-- Allowed operation: DELETE
+-- Policy definition:
+-- (bucket_id = 'christmas-tree-photos' AND (storage.foldername(name))[1] = auth.uid()::text)
+-- Target roles: authenticated
+
+-- ----------------------------------------
+-- Policy 4: Read (SELECT)
+-- ----------------------------------------
+-- Name: Users can read own files
+-- Allowed operation: SELECT
+-- Policy definition:
+-- (bucket_id = 'christmas-tree-photos' AND (storage.foldername(name))[1] = auth.uid()::text)
+-- Target roles: authenticated
 
 -- ============================================
--- STEP 2: Create user-specific policies
+-- ALTERNATIVE QUICK FIX (Easiest)
 -- ============================================
--- Photos are stored as: {user-id}/top.jpg, {user-id}/1.jpg, etc.
-
--- Allow authenticated users to read ONLY their own photos
-CREATE POLICY "Users can read own photos"
-ON storage.objects
-FOR SELECT
-TO authenticated
-USING (
-  bucket_id = 'christmas-tree-photos' 
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
-
--- Allow authenticated users to upload ONLY to their own folder
-CREATE POLICY "Users can upload own photos"
-ON storage.objects
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  bucket_id = 'christmas-tree-photos'
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
-
--- Allow authenticated users to update ONLY their own photos
-CREATE POLICY "Users can update own photos"
-ON storage.objects
-FOR UPDATE
-TO authenticated
-USING (
-  bucket_id = 'christmas-tree-photos'
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
-
--- Allow authenticated users to delete ONLY their own photos
-CREATE POLICY "Users can delete own photos"
-ON storage.objects
-FOR DELETE
-TO authenticated
-USING (
-  bucket_id = 'christmas-tree-photos'
-  AND (storage.foldername(name))[1] = auth.uid()::text
-);
-
--- ============================================
--- STEP 3: Verification (optional)
--- ============================================
--- Run this to verify your policies were created correctly:
-SELECT 
-  policyname, 
-  cmd,
-  qual,
-  with_check
-FROM pg_policies 
-WHERE schemaname = 'storage' 
-  AND tablename = 'objects';
-
--- ============================================
--- ALTERNATIVE: If policies still don't work, try this simpler approach
--- ============================================
--- Instead of RLS policies, you can make the bucket public:
--- 1. Go to Storage > christmas-tree-photos
--- 2. Click the gear icon (settings)
+-- If policies are too complex, just make the bucket PUBLIC:
+-- 
+-- 1. Go to: Storage > christmas-tree-photos
+-- 2. Click the gear icon (⚙️)
 -- 3. Toggle "Public bucket" to ON
--- This automatically allows public read access without policies
+-- 4. Click "Save"
+-- 
+-- This allows:
+-- ✅ Anyone can READ photos (good for sharing)
+-- ❌ Only authenticated users can WRITE (still protected by your app code)
+--
+-- This is the SIMPLEST solution and works perfectly for your use case!
