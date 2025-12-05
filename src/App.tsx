@@ -16,7 +16,23 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import PhotoUploader from './PhotoUploader';
+import './PhotoModal.css';
 import './App.css';
+
+// --- Photo Modal Component ---
+const PhotoModal = ({ photoUrl, onClose, photoIndex }: { photoUrl: string, onClose: () => void, photoIndex: number }) => {
+  return (
+    <div className="photo-modal" onClick={onClose}>
+      <div className="photo-modal-content" onClick={(e) => e.stopPropagation()}>
+        <button className="photo-modal-close" onClick={onClose}>✕</button>
+        <img src={photoUrl} alt={`Photo ${photoIndex + 1}`} className="photo-modal-image" />
+        <div className="photo-modal-info">
+          Photo #{photoIndex + 1} | Close fist ✊ or click X to close
+        </div>
+      </div>
+    </div>
+  );
+};
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
 
@@ -144,11 +160,24 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state, photoPaths }: { state: 'CHAOS' | 'FORMED', photoPaths?: string[] }) => {
+const PhotoOrnaments = ({ 
+  state, 
+  photoPaths, 
+  pointerPosition, 
+  onHover, 
+  onClick 
+}: { 
+  state: 'CHAOS' | 'FORMED', 
+  photoPaths?: string[], 
+  pointerPosition?: { x: number; y: number } | null,
+  onHover?: (photoIndex: number | null) => void,
+  onClick?: (photoIndex: number) => void
+}) => {
   const pathsToUse = photoPaths || CONFIG.photos.body;
   const textures = useTexture(pathsToUse);
   const count = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const borderGeometry = useMemo(() => new THREE.PlaneGeometry(1.2, 1.5), []);
   const photoGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
@@ -192,6 +221,36 @@ const PhotoOrnaments = ({ state, photoPaths }: { state: 'CHAOS' | 'FORMED', phot
     const isFormed = state === 'FORMED';
     const time = stateObj.clock.elapsedTime;
 
+    // Raycasting for finger pointer
+    if (pointerPosition && isFormed) {
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2(pointerPosition.x, pointerPosition.y);
+      raycaster.setFromCamera(pointer, stateObj.camera);
+      
+      const intersects = raycaster.intersectObjects(groupRef.current.children, true);
+      
+      if (intersects.length > 0) {
+        // Find which photo group was intersected
+        let targetGroup = intersects[0].object;
+        while (targetGroup.parent && targetGroup.parent !== groupRef.current) {
+          targetGroup = targetGroup.parent;
+        }
+        const index = groupRef.current.children.indexOf(targetGroup as THREE.Group);
+        if (index !== hoveredIndex) {
+          setHoveredIndex(index);
+          onHover?.(index);
+        }
+      } else {
+        if (hoveredIndex !== null) {
+          setHoveredIndex(null);
+          onHover?.(null);
+        }
+      }
+    } else if (hoveredIndex !== null) {
+      setHoveredIndex(null);
+      onHover?.(null);
+    }
+
     groupRef.current.children.forEach((group, i) => {
       const objData = data[i];
       const target = isFormed ? objData.targetPos : objData.chaosPos;
@@ -218,20 +277,37 @@ const PhotoOrnaments = ({ state, photoPaths }: { state: 'CHAOS' | 'FORMED', phot
 
   return (
     <group ref={groupRef}>
-      {data.map((obj, i) => (
-        <group key={i} scale={[obj.scale, obj.scale, obj.scale]} rotation={state === 'CHAOS' ? obj.chaosRotation : [0,0,0]}>
+      {data.map((obj, i) => {
+        const isHovered = hoveredIndex === i;
+        const hoverScale = isHovered ? 1.2 : 1.0;
+        return (
+        <group 
+          key={i} 
+          scale={[obj.scale * hoverScale, obj.scale * hoverScale, obj.scale * hoverScale]} 
+          rotation={state === 'CHAOS' ? obj.chaosRotation : [0,0,0]}
+          onClick={() => onClick?.(i)}
+        >
           {/* 正面 */}
           <group position={[0, 0, 0.015]}>
             <mesh geometry={photoGeometry}>
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
                 roughness={0.5} metalness={0}
-                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} emissiveIntensity={1.0}
+                emissive={isHovered ? '#FFD700' : CONFIG.colors.white} 
+                emissiveMap={textures[obj.textureIndex]} 
+                emissiveIntensity={isHovered ? 2.5 : 1.0}
                 side={THREE.FrontSide}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
-              <meshStandardMaterial color={obj.borderColor} roughness={0.9} metalness={0} side={THREE.FrontSide} />
+              <meshStandardMaterial 
+                color={isHovered ? '#FFD700' : obj.borderColor} 
+                roughness={0.9} 
+                metalness={isHovered ? 0.3 : 0} 
+                emissive={isHovered ? '#FFD700' : '#000000'}
+                emissiveIntensity={isHovered ? 0.5 : 0}
+                side={THREE.FrontSide} 
+              />
             </mesh>
           </group>
           {/* 背面 */}
@@ -240,16 +316,26 @@ const PhotoOrnaments = ({ state, photoPaths }: { state: 'CHAOS' | 'FORMED', phot
               <meshStandardMaterial
                 map={textures[obj.textureIndex]}
                 roughness={0.5} metalness={0}
-                emissive={CONFIG.colors.white} emissiveMap={textures[obj.textureIndex]} emissiveIntensity={1.0}
+                emissive={isHovered ? '#FFD700' : CONFIG.colors.white} 
+                emissiveMap={textures[obj.textureIndex]} 
+                emissiveIntensity={isHovered ? 2.5 : 1.0}
                 side={THREE.FrontSide}
               />
             </mesh>
             <mesh geometry={borderGeometry} position={[0, -0.15, -0.01]}>
-              <meshStandardMaterial color={obj.borderColor} roughness={0.9} metalness={0} side={THREE.FrontSide} />
+              <meshStandardMaterial 
+                color={isHovered ? '#FFD700' : obj.borderColor} 
+                roughness={0.9} 
+                metalness={isHovered ? 0.3 : 0}
+                emissive={isHovered ? '#FFD700' : '#000000'}
+                emissiveIntensity={isHovered ? 0.5 : 0}
+                side={THREE.FrontSide} 
+              />
             </mesh>
           </group>
         </group>
-      ))}
+        );
+      })}
     </group>
   );
 };
@@ -401,7 +487,19 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed, photoPaths }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photoPaths?: string[] }) => {
+const Experience = ({ sceneState, rotationSpeed, photoPaths, pointerPosition, onPhotoSelect, onPhotoHover }: { 
+  sceneState: 'CHAOS' | 'FORMED', 
+  rotationSpeed: number, 
+  photoPaths?: string[], 
+  pointerPosition?: { x: number; y: number } | null,
+  onPhotoSelect?: (photoUrl: string | null) => void,
+  onPhotoHover?: (index: number | null) => void
+}) => {
+
+  const handlePhotoClick = (index: number) => {
+    const photoUrl = photoPaths?.[index] || CONFIG.photos.body[index];
+    onPhotoSelect?.(photoUrl);
+  };
   const actualPhotoPaths = photoPaths || bodyPhotoPaths;
   
   const controlsRef = useRef<any>(null);
@@ -429,7 +527,13 @@ const Experience = ({ sceneState, rotationSpeed, photoPaths }: { sceneState: 'CH
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
         <Suspense fallback={null}>
-           <PhotoOrnaments state={sceneState} photoPaths={actualPhotoPaths} />
+           <PhotoOrnaments 
+             state={sceneState} 
+             photoPaths={actualPhotoPaths} 
+             pointerPosition={pointerPosition}
+             onHover={onPhotoHover}
+             onClick={handlePhotoClick}
+           />
            <ChristmasElements state={sceneState} />
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
@@ -447,7 +551,7 @@ const Experience = ({ sceneState, rotationSpeed, photoPaths }: { sceneState: 'CH
 
 // --- Gesture Controller ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
+const GestureController = ({ onGesture, onMove, onStatus, onPointerMove, onPhotoClick, onPhotoClose, debugMode }: any) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -515,21 +619,40 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
             if (results.gestures.length > 0) {
               const name = results.gestures[0][0].categoryName; const score = results.gestures[0][0].score;
               if (score > 0.4) {
-                 if (name === "Open_Palm") onGesture("CHAOS"); if (name === "Closed_Fist") onGesture("FORMED");
+                 if (name === "Open_Palm") onGesture("CHAOS"); 
+                 if (name === "Closed_Fist") {
+                   onGesture("FORMED");
+                   onPhotoClose?.();
+                 }
+                 if (name === "Pointing_Up") onPhotoClick?.();
                  if (debugMode) onStatus(`DETECTED: ${name}`);
               }
               if (results.landmarks.length > 0) {
                 const speed = (0.5 - results.landmarks[0][0].x) * 0.15;
                 onMove(Math.abs(speed) > 0.01 ? speed : 0);
+                
+                // Track index finger tip (landmark 8) for pointer
+                const indexTip = results.landmarks[0][8];
+                if (indexTip) {
+                  // Convert from normalized [0,1] to NDC [-1,1]
+                  onPointerMove({ 
+                    x: (indexTip.x * 2) - 1,  // flip X and convert to NDC
+                    y: -((indexTip.y * 2) - 1) // flip Y and convert to NDC
+                  });
+                }
               }
-            } else { onMove(0); if (debugMode) onStatus("AI READY: NO HAND"); }
+            } else { 
+              onMove(0); 
+              onPointerMove(null);
+              if (debugMode) onStatus("AI READY: NO HAND"); 
+            }
         }
         requestRef = requestAnimationFrame(predictWebcam);
       }
     };
     setup();
     return () => cancelAnimationFrame(requestRef);
-  }, [onGesture, onMove, onStatus, debugMode]);
+  }, [onGesture, onMove, onStatus, onPointerMove, onPhotoClick, onPhotoClose, debugMode]);
 
   return (
     <>
@@ -547,6 +670,21 @@ export default function GrandTreeApp() {
   const [debugMode, setDebugMode] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
   const [userPhotoPaths, setUserPhotoPaths] = useState<string[]>(bodyPhotoPaths);
+  const [pointerPosition, setPointerPosition] = useState<{ x: number; y: number } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [hoveredPhotoIndex, setHoveredPhotoIndex] = useState<number | null>(null);
+
+  const handlePhotoClick = () => {
+    if (hoveredPhotoIndex !== null) {
+      const photoUrl = userPhotoPaths[hoveredPhotoIndex];
+      setSelectedPhoto(photoUrl);
+      console.log('Photo selected:', photoUrl, 'at index:', hoveredPhotoIndex);
+    }
+  };
+
+  const handlePhotoClose = () => {
+    setSelectedPhoto(null);
+  };
 
   // Load session photos on mount
   useEffect(() => {
@@ -569,10 +707,29 @@ export default function GrandTreeApp() {
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photoPaths={userPhotoPaths} />
+            <Experience 
+              sceneState={sceneState} 
+              rotationSpeed={rotationSpeed} 
+              photoPaths={userPhotoPaths}
+              pointerPosition={pointerPosition}
+              onPhotoSelect={(photoUrl) => {
+                setSelectedPhoto(photoUrl);
+                const index = userPhotoPaths.indexOf(photoUrl || '');
+                setHoveredPhotoIndex(index >= 0 ? index : null);
+              }}
+              onPhotoHover={setHoveredPhotoIndex}
+            />
         </Canvas>
       </div>
-      <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />
+      <GestureController 
+        onGesture={setSceneState} 
+        onMove={setRotationSpeed} 
+        onStatus={setAiStatus} 
+        onPointerMove={setPointerPosition}
+        onPhotoClick={handlePhotoClick}
+        onPhotoClose={handlePhotoClose}
+        debugMode={debugMode} 
+      />
 
       {/* UI - Stats */}
       <div style={{ position: 'absolute', bottom: '30px', left: '40px', color: '#888', zIndex: 10, fontFamily: 'sans-serif', userSelect: 'none' }}>
@@ -604,13 +761,34 @@ export default function GrandTreeApp() {
       </div>
 
       {/* UI - AI Status */}
-      <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', color: aiStatus.includes('ERROR') ? '#FF0000' : 'rgba(255, 215, 0, 0.4)', fontSize: '10px', letterSpacing: '2px', zIndex: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
+      <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', color: aiStatus.includes('ERROR') ? '#FF0000' : 'rgba(255, 215, 0, 0.4)', fontSize: '10px', letterSpacing: '2px', zIndex: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px', textAlign: 'center' }}>
         {aiStatus}
+        {pointerPosition && (
+          <div style={{ marginTop: '5px', fontSize: '8px', color: '#00FF00' }}>
+            {hoveredPhotoIndex !== null 
+              ? `POINTING AT PHOTO #${hoveredPhotoIndex + 1} - Point Up ☝️ to select` 
+              : `POINTING: X=${pointerPosition.x.toFixed(2)} Y=${pointerPosition.y.toFixed(2)}`}
+          </div>
+        )}
+        {selectedPhoto && (
+          <div style={{ marginTop: '5px', fontSize: '8px', color: '#FFD700' }}>
+            ✨ SELECTED: Photo #{userPhotoPaths.indexOf(selectedPhoto) + 1}
+          </div>
+        )}
       </div>
 
       {/* Photo Uploader Modal */}
       {showUploader && (
         <PhotoUploader onComplete={handleUploadComplete} />
+      )}
+
+      {/* Photo View Modal */}
+      {selectedPhoto && (
+        <PhotoModal 
+          photoUrl={selectedPhoto} 
+          onClose={handlePhotoClose}
+          photoIndex={userPhotoPaths.indexOf(selectedPhoto)}
+        />
       )}
     </div>
   );
