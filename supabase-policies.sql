@@ -1,52 +1,77 @@
 -- ============================================
 -- Supabase Storage Policies for Christmas Tree App
 -- Bucket: christmas-tree-photos
+-- WITH USER AUTHENTICATION & ISOLATION
 -- ============================================
 
--- Execute these commands in your Supabase SQL Editor
--- Dashboard > SQL Editor > New Query > Paste & Run
+-- IMPORTANT: First, drop any existing conflicting policies
+-- Run this in Supabase SQL Editor before creating new policies
 
 -- ============================================
--- POLICY 1: Allow Public Read Access
+-- STEP 1: Clean up existing policies (run this first)
 -- ============================================
-CREATE POLICY "Allow public read access"
+DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public upload" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public update" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public delete" ON storage.objects;
+DROP POLICY IF EXISTS "Public read access" ON storage.objects;
+DROP POLICY IF EXISTS "Public upload access" ON storage.objects;
+DROP POLICY IF EXISTS "Public update access" ON storage.objects;
+DROP POLICY IF EXISTS "Public delete access" ON storage.objects;
+DROP POLICY IF EXISTS "Users can read own photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can upload own photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update own photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own photos" ON storage.objects;
+
+-- ============================================
+-- STEP 2: Create user-specific policies
+-- ============================================
+-- Photos are stored as: {user-id}/top.jpg, {user-id}/1.jpg, etc.
+
+-- Allow authenticated users to read ONLY their own photos
+CREATE POLICY "Users can read own photos"
 ON storage.objects
 FOR SELECT
-TO public
-USING (bucket_id = 'christmas-tree-photos');
+TO authenticated
+USING (
+  bucket_id = 'christmas-tree-photos' 
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- ============================================
--- POLICY 2: Allow Public Upload/Insert
--- ============================================
-CREATE POLICY "Allow public upload"
+-- Allow authenticated users to upload ONLY to their own folder
+CREATE POLICY "Users can upload own photos"
 ON storage.objects
 FOR INSERT
-TO public
-WITH CHECK (bucket_id = 'christmas-tree-photos');
+TO authenticated
+WITH CHECK (
+  bucket_id = 'christmas-tree-photos'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- ============================================
--- POLICY 3: Allow Public Update (for overwriting files)
--- ============================================
-CREATE POLICY "Allow public update"
+-- Allow authenticated users to update ONLY their own photos
+CREATE POLICY "Users can update own photos"
 ON storage.objects
 FOR UPDATE
-TO public
-USING (bucket_id = 'christmas-tree-photos')
-WITH CHECK (bucket_id = 'christmas-tree-photos');
+TO authenticated
+USING (
+  bucket_id = 'christmas-tree-photos'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- ============================================
--- POLICY 4: Allow Public Delete
--- ============================================
-CREATE POLICY "Allow public delete"
+-- Allow authenticated users to delete ONLY their own photos
+CREATE POLICY "Users can delete own photos"
 ON storage.objects
 FOR DELETE
-TO public
-USING (bucket_id = 'christmas-tree-photos');
+TO authenticated
+USING (
+  bucket_id = 'christmas-tree-photos'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
 -- ============================================
--- VERIFICATION QUERY
+-- STEP 3: Verification (optional)
 -- ============================================
--- Run this to verify your policies were created:
+-- Run this to verify your policies were created correctly:
 SELECT 
   policyname, 
   cmd,
@@ -54,14 +79,13 @@ SELECT
   with_check
 FROM pg_policies 
 WHERE schemaname = 'storage' 
-  AND tablename = 'objects'
-  AND policyname LIKE '%public%';
+  AND tablename = 'objects';
 
 -- ============================================
--- CLEANUP (if you need to remove policies)
+-- ALTERNATIVE: If policies still don't work, try this simpler approach
 -- ============================================
--- Uncomment and run if you need to reset:
--- DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
--- DROP POLICY IF EXISTS "Allow public upload" ON storage.objects;
--- DROP POLICY IF EXISTS "Allow public update" ON storage.objects;
--- DROP POLICY IF EXISTS "Allow public delete" ON storage.objects;
+-- Instead of RLS policies, you can make the bucket public:
+-- 1. Go to Storage > christmas-tree-photos
+-- 2. Click the gear icon (settings)
+-- 3. Toggle "Public bucket" to ON
+-- This automatically allows public read access without policies

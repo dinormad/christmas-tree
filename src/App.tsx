@@ -16,29 +16,33 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import PhotoUploader from './PhotoUploader';
+import Auth, { UserInfo } from './Auth';
+import { supabase, getPhotoUrl } from './supabase';
+import type { User } from '@supabase/supabase-js';
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
 
 // Use local photos for now - switch to Supabase after uploading photos
 // To use Supabase photos after upload, uncomment the Supabase import and use getPhotoUrl()
-const USE_SUPABASE = false; // Set to true after uploading photos to Supabase
+const USE_SUPABASE = true; // Now always true with authentication
 
 // Function to get photo paths
-const getPhotoPath = (fileName: string): string => {
-  if (USE_SUPABASE && import.meta.env.VITE_SUPABASE_URL) {
-    // Supabase storage URL
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    return `${supabaseUrl}/storage/v1/object/public/christmas-tree-photos/${fileName}`;
+const getPhotoPath = (fileName: string, userId?: string): string => {
+  if (USE_SUPABASE && userId) {
+    // Supabase storage URL with user folder
+    return getPhotoUrl(fileName, userId);
   }
   // Local photos fallback
   return `/photos/${fileName}`;
 };
 
-// 修改：将 top.jpg 加入到数组开头
-const bodyPhotoPaths = [
-  getPhotoPath('top.jpg'),
-  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => getPhotoPath(`${i + 1}.jpg`))
+// Generate photo paths - will be updated with user ID when available
+const generatePhotoPaths = (userId?: string) => [
+  getPhotoPath('top.jpg', userId),
+  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => getPhotoPath(`${i + 1}.jpg`, userId))
 ];
+
+const bodyPhotoPaths = generatePhotoPaths(); // Initial without user ID
 
 // --- 视觉配置 ---
 const CONFIG = {
@@ -140,8 +144,9 @@ const Foliage = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Component: Photo Ornaments (Double-Sided Polaroid) ---
-const PhotoOrnaments = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
-  const textures = useTexture(CONFIG.photos.body);
+const PhotoOrnaments = ({ state, photoPaths }: { state: 'CHAOS' | 'FORMED', photoPaths?: string[] }) => {
+  const pathsToUse = photoPaths || CONFIG.photos.body;
+  const textures = useTexture(pathsToUse);
   const count = CONFIG.counts.ornaments;
   const groupRef = useRef<THREE.Group>(null);
 
@@ -396,7 +401,9 @@ const TopStar = ({ state }: { state: 'CHAOS' | 'FORMED' }) => {
 };
 
 // --- Main Scene Experience ---
-const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number }) => {
+const Experience = ({ sceneState, rotationSpeed, photoPaths }: { sceneState: 'CHAOS' | 'FORMED', rotationSpeed: number, photoPaths?: string[] }) => {
+  const actualPhotoPaths = photoPaths || bodyPhotoPaths;
+  
   const controlsRef = useRef<any>(null);
   useFrame(() => {
     if (controlsRef.current) {
@@ -422,7 +429,7 @@ const Experience = ({ sceneState, rotationSpeed }: { sceneState: 'CHAOS' | 'FORM
       <group position={[0, -6, 0]}>
         <Foliage state={sceneState} />
         <Suspense fallback={null}>
-           <PhotoOrnaments state={sceneState} />
+           <PhotoOrnaments state={sceneState} photoPaths={actualPhotoPaths} />
            <ChristmasElements state={sceneState} />
            <FairyLights state={sceneState} />
            <TopStar state={sceneState} />
@@ -526,12 +533,50 @@ export default function GrandTreeApp() {
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [userPhotoPaths, setUserPhotoPaths] = useState(bodyPhotoPaths);
+
+  // Check user authentication on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        // Update photo paths with user ID
+        setUserPhotoPaths(generatePhotoPaths(session.user.id));
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        // Update photo paths with user ID
+        setUserPhotoPaths(generatePhotoPaths(session.user.id));
+      } else {
+        // Reset to default paths
+        setUserPhotoPaths(bodyPhotoPaths);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // If not authenticated, show Auth screen
+  if (!user) {
+    return <Auth />;
+  }
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
+      {/* User info in top-right corner */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
+        <UserInfo user={user} />
+      </div>
+
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
-            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} />
+            <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photoPaths={userPhotoPaths} />
         </Canvas>
       </div>
       <GestureController onGesture={setSceneState} onMove={setRotationSpeed} onStatus={setAiStatus} debugMode={debugMode} />

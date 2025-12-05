@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import './PhotoUploader.css';
-import { uploadPhoto } from './supabase';
+import { uploadPhoto, supabase } from './supabase';
 
 interface UploadedPhoto {
   file: File;
@@ -133,14 +133,22 @@ const PhotoUploader = ({ onComplete }: PhotoUploaderProps) => {
     setUploading(true);
 
     try {
-      // Upload main photo to Supabase
-      await uploadPhoto(mainPhoto.file, 'top.jpg');
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('请先登录');
+        setUploading(false);
+        return;
+      }
+
+      // Upload main photo to Supabase with user ID
+      await uploadPhoto(mainPhoto.file, 'top.jpg', user.id);
       console.log('✅ Uploaded: top.jpg');
 
-      // Upload body photos to Supabase
+      // Upload body photos to Supabase with user ID
       for (let i = 0; i < bodyPhotos.length; i++) {
         const photo = bodyPhotos[i];
-        await uploadPhoto(photo.file, `${i + 1}.jpg`);
+        await uploadPhoto(photo.file, `${i + 1}.jpg`, user.id);
         console.log(`✅ Uploaded: ${i + 1}.jpg`);
       }
 
