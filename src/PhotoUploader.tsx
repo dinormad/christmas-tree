@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import './PhotoUploader.css';
-import { uploadPhoto, supabase } from './supabase';
 
 interface UploadedPhoto {
   file: File;
@@ -9,7 +8,7 @@ interface UploadedPhoto {
 }
 
 interface PhotoUploaderProps {
-  onComplete: () => void;
+  onComplete: (photos: string[]) => void;
 }
 
 const PhotoUploader = ({ onComplete }: PhotoUploaderProps) => {
@@ -133,34 +132,26 @@ const PhotoUploader = ({ onComplete }: PhotoUploaderProps) => {
     setUploading(true);
 
     try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert('请先登录');
-        setUploading(false);
-        return;
-      }
-
-      // Upload main photo to Supabase with user ID
-      await uploadPhoto(mainPhoto.file, 'top.jpg', user.id);
-      console.log('✅ Uploaded: top.jpg');
-
-      // Upload body photos to Supabase with user ID
-      for (let i = 0; i < bodyPhotos.length; i++) {
-        const photo = bodyPhotos[i];
-        await uploadPhoto(photo.file, `${i + 1}.jpg`, user.id);
-        console.log(`✅ Uploaded: ${i + 1}.jpg`);
-      }
-
-      alert(`照片上传成功！\n\n已上传：\n- 1 张封面图 (top.jpg)\n- ${bodyPhotos.length} 张树身照片\n\n请刷新页面查看效果。`);
+      // Create blob URLs for all photos
+      const photoUrls: string[] = [];
       
-      // Reload the page to show new photos
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
+      // Add main photo (top.jpg at index 0)
+      photoUrls[0] = mainPhoto.preview;
+      console.log('✅ Added: top.jpg');
+
+      // Add body photos (1.jpg, 2.jpg, etc. at indices 1-31)
+      for (let i = 0; i < bodyPhotos.length; i++) {
+        photoUrls[i + 1] = bodyPhotos[i].preview;
+        console.log(`✅ Added: ${i + 1}.jpg`);
+      }
+
+      alert(`照片已加载成功！\n\n已加载：\n- 1 张封面图 (top.jpg)\n- ${bodyPhotos.length} 张树身照片\n\n点击确定查看效果。`);
+      
+      // Call onComplete with the photo URLs
+      onComplete(photoUrls);
     } catch (error) {
       console.error('Upload error:', error);
-      alert(`上传失败：${error instanceof Error ? error.message : '未知错误'}\n\n请确保：\n1. Supabase 存储桶 "christmas-tree-photos" 已创建\n2. 存储桶设置为公开访问\n3. 网络连接正常`);
+      alert(`加载失败：${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setUploading(false);
     }
@@ -190,7 +181,7 @@ const PhotoUploader = ({ onComplete }: PhotoUploaderProps) => {
     <div className="photo-uploader">
       <div className="uploader-header">
         <h2>🎄 圣诞树照片管理器</h2>
-        <button onClick={onComplete} className="close-btn">✕</button>
+        <button onClick={() => onComplete([])} className="close-btn">✕</button>
       </div>
 
       <div className="uploader-content">

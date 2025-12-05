@@ -16,33 +16,33 @@ import { MathUtils } from 'three';
 import * as random from 'maath/random';
 import { GestureRecognizer, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import PhotoUploader from './PhotoUploader';
-import Auth, { UserInfo } from './Auth';
-import { supabase, getPhotoUrl } from './supabase';
-import type { User } from '@supabase/supabase-js';
+import './App.css';
 // --- 动态生成照片列表 (top.jpg + 1.jpg 到 31.jpg) ---
 const TOTAL_NUMBERED_PHOTOS = 31;
 
-// Use local photos by default - users see placeholders until they upload
-// After upload and page refresh, their photos will load from Supabase
-const USE_SUPABASE = false; // Keep false so new users see working tree with placeholders
+// Session storage key for user photos
+const PHOTO_STORAGE_KEY = 'christmas-tree-photos';
 
-// Function to get photo paths
-const getPhotoPath = (fileName: string, userId?: string): string => {
-  if (USE_SUPABASE && userId) {
-    // Supabase storage URL with user folder
-    return getPhotoUrl(fileName, userId);
+// Function to get photo paths (session or default)
+const getSessionPhotos = (): string[] => {
+  const stored = sessionStorage.getItem(PHOTO_STORAGE_KEY);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
   }
-  // Local photos fallback (default placeholder photos)
-  return `/photos/${fileName}`;
+  return [];
 };
 
-// Generate photo paths - will be updated with user ID when available
-const generatePhotoPaths = (userId?: string) => [
-  getPhotoPath('top.jpg', userId),
-  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => getPhotoPath(`${i + 1}.jpg`, userId))
+// Generate default placeholder photo paths
+const generateDefaultPhotos = () => [
+  '/photos/top.jpg',
+  ...Array.from({ length: TOTAL_NUMBERED_PHOTOS }, (_, i) => `/photos/${i + 1}.jpg`)
 ];
 
-const bodyPhotoPaths = generatePhotoPaths(); // Initial without user ID (uses local photos)
+const bodyPhotoPaths = generateDefaultPhotos(); // Default placeholders
 
 // --- 视觉配置 ---
 const CONFIG = {
@@ -469,15 +469,28 @@ const GestureController = ({ onGesture, onMove, onStatus, debugMode }: any) => {
         });
         onStatus("REQUESTING CAMERA...");
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play();
-            onStatus("AI READY: SHOW HAND");
-            predictWebcam();
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              videoRef.current.play();
+              onStatus("AI READY: SHOW HAND");
+              predictWebcam();
+            }
+          } catch (cameraErr: any) {
+            console.error("Camera access error:", cameraErr);
+            if (cameraErr.name === 'NotAllowedError') {
+              onStatus("ERROR: CAMERA PERMISSION DENIED");
+            } else if (cameraErr.name === 'NotFoundError') {
+              onStatus("ERROR: NO CAMERA FOUND");
+            } else if (cameraErr.name === 'NotReadableError') {
+              onStatus("ERROR: CAMERA IN USE");
+            } else {
+              onStatus(`ERROR: ${cameraErr.message || 'CAMERA FAILED'}`);
+            }
           }
         } else {
-            onStatus("ERROR: CAMERA PERMISSION DENIED");
+            onStatus("ERROR: CAMERA NOT SUPPORTED");
         }
       } catch (err: any) {
         onStatus(`ERROR: ${err.message || 'MODEL FAILED'}`);
@@ -533,61 +546,27 @@ export default function GrandTreeApp() {
   const [aiStatus, setAiStatus] = useState("INITIALIZING...");
   const [debugMode, setDebugMode] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [userPhotoPaths, setUserPhotoPaths] = useState(bodyPhotoPaths);
-  const [loading, setLoading] = useState(true);
+  const [userPhotoPaths, setUserPhotoPaths] = useState<string[]>(bodyPhotoPaths);
 
-  // Check user authentication on mount
+  // Load session photos on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        // Update photo paths with user ID
-        setUserPhotoPaths(generatePhotoPaths(session.user.id));
-      }
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        // Update photo paths with user ID
-        setUserPhotoPaths(generatePhotoPaths(session.user.id));
-      } else {
-        // Reset to default paths
-        setUserPhotoPaths(bodyPhotoPaths);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const sessionPhotos = getSessionPhotos();
+    if (sessionPhotos.length > 0) {
+      setUserPhotoPaths(sessionPhotos);
+    }
   }, []);
 
-  // Show loading screen while checking auth
-  if (loading) {
-    return (
-      <div style={{ width: '100vw', height: '100vh', backgroundColor: '#1a4d2e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFD700', fontSize: '20px', fontFamily: 'sans-serif' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>🎄</div>
-          <div>Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
-  // If not authenticated, show Auth screen
-  if (!user) {
-    return <Auth />;
-  }
+  // Handle photo upload complete
+  const handleUploadComplete = (photos: string[]) => {
+    // Save to session storage
+    sessionStorage.setItem(PHOTO_STORAGE_KEY, JSON.stringify(photos));
+    // Update state
+    setUserPhotoPaths(photos);
+    setShowUploader(false);
+  };
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000', position: 'relative', overflow: 'hidden' }}>
-      {/* User info in top-right corner */}
-      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
-        <UserInfo user={user} />
-      </div>
-
       <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, zIndex: 1 }}>
         <Canvas dpr={[1, 2]} gl={{ toneMapping: THREE.ReinhardToneMapping }} shadows>
             <Experience sceneState={sceneState} rotationSpeed={rotationSpeed} photoPaths={userPhotoPaths} />
@@ -631,7 +610,7 @@ export default function GrandTreeApp() {
 
       {/* Photo Uploader Modal */}
       {showUploader && (
-        <PhotoUploader onComplete={() => setShowUploader(false)} />
+        <PhotoUploader onComplete={handleUploadComplete} />
       )}
     </div>
   );
